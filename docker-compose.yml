@@ -1,0 +1,100 @@
+version: "3"
+
+services:
+
+  teslamate:
+    image: teslamate/teslamate:latest
+    container_name: teslamate
+    hostname: teslamate
+    restart: unless-stopped
+    expose:
+      - "4000"
+    environment:
+      - DATABASE_USER=teslamate
+      - DATABASE_PASS=${INTERNAL_PASSWORD}
+      - DATABASE_NAME=teslamate
+      - DATABASE_HOST=database
+      - DATABASE_PORT=5432
+      - DISABLE_MQTT=true
+      - LETSENCRYPT_EMAIL=${SSL_EXPIRE_EMAIL}
+      - VIRTUAL_HOST=${TESLAMATE_MAIN_DOMAIN}
+      - VIRTUAL_PATH=/
+      - VIRTUAL_PORT=4000
+      - LETSENCRYPT_HOST=${TESLAMATE_MAIN_DOMAIN}
+      - TZ=${TESLAMATE_TZ}
+    volumes:
+      - ${CONFIG_BASE}/import:/opt/app/import
+    cap_drop:
+      - all
+    network_mode: "bridge"
+    links:
+      - "database"
+
+  grafana:
+    image: teslamate/grafana:latest
+    container_name: grafana
+    hostname: grafana
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - DATABASE_USER=teslamate
+      - DATABASE_PASS=${INTERNAL_PASSWORD}
+      - DATABASE_NAME=teslamate
+      - DATABASE_HOST=database
+      - LETSENCRYPT_EMAIL=${SSL_EXPIRE_EMAIL}
+      - VIRTUAL_HOST=${TESLAMATE_MAIN_DOMAIN}
+      - VIRTUAL_PATH=/grafana/
+      - VIRTUAL_PORT=3000
+      - LETSENCRYPT_HOST=${TESLAMATE_MAIN_DOMAIN}
+      - GF_SERVER_ROOT_URL=https://${TESLAMATE_MAIN_DOMAIN}/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - ${CONFIG_BASE}/teslamate-grafana-data:/var/lib/grafana
+    network_mode: "bridge"
+    links:
+      - "database"
+
+  database:
+    image: postgres:13
+    container_name: database
+    hostname: database
+    expose:
+      - "5432"
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=teslamate
+      - POSTGRES_PASSWORD=${INTERNAL_PASSWORD}
+      - POSTGRES_DB=teslamate
+    volumes:
+      - ${CONFIG_BASE}/teslamate-db:/var/lib/postgresql/data
+    network_mode: "bridge"
+
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy@sha256:fc0187f6e93dad7718c0870372cf682f71b5a469ab48425dc9eb204e95db8ece
+    restart: unless-stopped
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${CONFIG_BASE}/nginx/htpasswd:/etc/nginx/htpasswd
+      - ${CONFIG_BASE}/nginx/conf:/etc/nginx/conf.d
+      - ${CONFIG_BASE}/nginx/vhost:/etc/nginx/vhost.d
+      - ${CONFIG_BASE}/nginx/html:/usr/share/nginx/html
+      - ${CONFIG_BASE}/nginx/dhparam:/etc/nginx/dhparam
+      - ${CONFIG_BASE}/nginx/certs:/etc/nginx/certs:ro
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    network_mode: "bridge"
+
+  acme-companion:
+    image: nginxproxy/acme-companion:latest
+    restart: unless-stopped
+    container_name: nginx-proxy-acme
+    volumes_from:
+      - nginx-proxy
+    volumes:
+      - ${CONFIG_BASE}/nginx/certs:/etc/nginx/certs:rw
+      - ${CONFIG_BASE}/nginx/acme:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    network_mode: "bridge"
