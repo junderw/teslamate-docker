@@ -3,7 +3,7 @@ version: "3"
 services:
 
   teslamate:
-    image: teslamate/teslamate:latest
+    image: teslamate/teslamate:1.23.7
     container_name: teslamate
     hostname: teslamate
     restart: unless-stopped
